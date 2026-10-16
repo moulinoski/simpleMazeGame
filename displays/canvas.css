@@ -1,0 +1,33 @@
+/* ── Canvas ─────────────────────────────────── */
+#canvas-wrapper {
+  display: none;
+  position: relative;
+  width: fit-content;
+  height: fit-content;
+}
+
+#maze-canvas {
+  display: block;
+  border: 1.5px solid #22224a;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px rgba(74, 128, 240, 0.08),
+    0 0 50px rgba(74, 128, 240, 0.12),
+    0 8px 60px rgba(0, 0, 0, 0.7);
+  background: var(--clr-floor);
+  image-rendering: pixelated;
+}
+
+#hint {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 90vw;
+  color: #445;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-align: center;
+  pointer-events: none;
+}

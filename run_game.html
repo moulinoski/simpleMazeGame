@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simple Maze Game</title>
+  <style>
+    @import url("displays/base.css");
+    @import url("displays/title.css");
+    @import url("displays/loading-screen.css");
+    @import url("displays/canvas.css");
+    @import url("displays/win-overlay.css");
+  </style>
+</head>
+
+<body>
+
+  <div id="app-title" style="display: none;">Simple Maze Game</div>
+
+  <div id="start-screen">
+    <div id="title-card">SIMPLE MAZE GAME<br>Can <u>you</u> escape the maze?</div>
+    <div id="start-menu" role="menu">
+      <button class="menu-btn highlighted" data-index="0" role="menuitem">Tiny</button>
+      <button class="menu-btn" data-index="1" role="menuitem">Small</button>
+      <button class="menu-btn" data-index="2" role="menuitem">Medium</button>
+      <button class="menu-btn" data-index="3" role="menuitem">Large</button>
+      <button class="menu-btn" data-index="4" role="menuitem">Giant</button>
+    </div>
+  </div>
+
+  <div id="loading-screen" style="display: none;">
+    <div id="loading-label">Generating maze…</div>
+    <div id="loading-bar-track">
+      <div id="loading-bar-fill"></div>
+    </div>
+  </div>
+
+  <div id="canvas-wrapper">
+    <canvas id="maze-canvas"></canvas>
+    <div id="hint">Arrow keys / W A S D to move &nbsp;·&nbsp; Reach ✨ to win</div>
+  </div>
+
+  <div id="win-overlay">
+    <div id="win-card">
+      <div id="win-text">You Win!</div>
+      <button id="play-again-btn">Play Again?</button>
+    </div>
+  </div>
+
+  <script src="cells/Impassable.js"></script>
+  <script src="cells/Passable.js"></script>
+  <script src="cells/BasicImpassable.js"></script>
+  <script src="cells/BasicPassable.js"></script>
+  <script src="mazes/Maze.js"></script>
+  <script src="mazes/TinyMaze.js"></script>
+  <script src="mazes/SmallMaze.js"></script>
+  <script src="mazes/MediumMaze.js"></script>
+  <script src="mazes/LargeMaze.js"></script>
+  <script src="mazes/GiantMaze.js"></script>
+  <script src="algorithms/MazeSolver.js"></script>
+  <script src="algorithms/MazeGenerator.js"></script>
+
+  <script>
+    "use strict";
+    // ================================================================
+    //  Simple Maze Game
+    //  TypeScript-style architecture compiled to ES2020+ JavaScript
+    // ================================================================
+
+    // ──────────────────────────────────────────────────────────────
+    //  Renderer
+    // ──────────────────────────────────────────────────────────────
+
+    // Pixel size of each maze cell on the canvas
+    const CELL_PX = 50;
+
+    // Pre-built off-screen canvas for the static maze (walls + floor)
+    let mazeOffscreen = null;
+
+    /**
+     * Build (or rebuild) the static maze image onto an OffscreenCanvas / normal Canvas.
+     * @param {Maze} m
+     */
+    function buildMazeTexture(m) {
+      const W = m.width, H = m.height;
+      const oc = document.createElement('canvas');
+      oc.width = W * CELL_PX;
+      oc.height = H * CELL_PX;
+      const oc2 = oc.getContext('2d');
+
+      // Fill everything as floor first
+      oc2.fillStyle = '#0e0e1e';
+      oc2.fillRect(0, 0, oc.width, oc.height);
+
+      // Draw walls
+      oc2.fillStyle = '#1a1a38';
+      const grid = m.mazeArrayRepresentation;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (!grid[y][x]) {
+            oc2.fillRect(x * CELL_PX, y * CELL_PX, CELL_PX, CELL_PX);
+          }
+        }
+      }
+
+      // Goal highlight
+      const gx = m.goalPoint.x, gy = m.goalPoint.y;
+      oc2.fillStyle = '#2a2200';
+      oc2.fillRect(gx * CELL_PX - CELL_PX, gy * CELL_PX - CELL_PX, 1, 1);
+
+      mazeOffscreen = oc;
+    }
+
+    /**
+     * Draw the visible viewport onto the main canvas, centred on (px, py).
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {number} vpW  viewport width px
+     * @param {number} vpH  viewport height px
+     * @param {Maze}   m
+     * @param {number} px   player pixel position (maze grid units)
+     * @param {number} py
+     */
+    function drawViewport(ctx, vpW, vpH, m, px, py) {
+      const W = m.width, H = m.height;
+      const totalW = W * CELL_PX, totalH = H * CELL_PX;
+
+      // Clear viewport background
+      ctx.fillStyle = '#0e0e1e';
+      ctx.fillRect(0, 0, vpW, vpH);
+
+      let camX = 0;
+      let camY = 0;
+      let destX = 0;
+      let destY = 0;
+      let srcW = vpW;
+      let srcH = vpH;
+
+      if (totalW <= vpW) {
+        // Maze is narrower than viewport: center it horizontally
+        camX = 0;
+        destX = Math.floor((vpW - totalW) / 2);
+        srcW = totalW;
+      } else {
+        // Maze is wider than viewport: scroll camera to track player
+        camX = px * CELL_PX + CELL_PX / 2 - vpW / 2;
+        camX = Math.max(0, Math.min(totalW - vpW, camX));
+        destX = 0;
+        srcW = vpW;
+      }
+
+      if (totalH <= vpH) {
+        // Maze is shorter than viewport: center it vertically
+        camY = 0;
+        destY = Math.floor((vpH - totalH) / 2);
+        srcH = totalH;
+      } else {
+        // Maze is taller than viewport: scroll camera to track player
+        camY = py * CELL_PX + CELL_PX / 2 - vpH / 2;
+        camY = Math.max(0, Math.min(totalH - vpH, camY));
+        destY = 0;
+        srcH = vpH;
+      }
+
+      // Blit static maze texture
+      ctx.drawImage(
+        mazeOffscreen,
+        camX, camY, srcW, srcH,
+        destX, destY, srcW, srcH
+      );
+
+      const draw = (gx, gy, char) => {
+        const sx = gx * CELL_PX - camX + destX + CELL_PX / 2;
+        const sy = gy * CELL_PX - camY + destY + CELL_PX / 2;
+        ctx.font = `${CELL_PX * 1.35}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(char, sx, sy);
+      };
+
+      // Goal emoji
+      draw(m.goalPoint.x, m.goalPoint.y, '✨');
+
+      // Player emoji
+      draw(px, py, playerChar);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Input handling
+    // ──────────────────────────────────────────────────────────────
+
+    const KEY_TO_DELTA = {
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      w: [0, -1], W: [0, -1],
+      s: [0, 1], S: [0, 1],
+      a: [-1, 0], A: [-1, 0],
+      d: [1, 0], D: [1, 0],
+    };
+
+    // Movement rate: 1 move per 1/6 second = ~167 ms
+    const MOVE_MS = Math.round(1000 / 6);
+
+    // Player character sprites
+    // No. 418 on unicode.org: [U+1F6B6 U+200D U+27A1 U+FE0F] "person walking: facing right"
+    const CHAR_WALK_RIGHT = '\u{1F6B6}\u{200D}\u{27A1}\u{FE0F}';
+    const CHAR_WALK_LEFT = '🚶';
+    const CHAR_IDLE_STAND = '🧍';
+    const CHAR_IDLE_SLEEP = '🛌';
+
+    // ──────────────────────────────────────────────────────────────
+    //  Game state
+    // ──────────────────────────────────────────────────────────────
+
+    let maze = null;
+    let playerX = 0, playerY = 0;
+    let playerChar = CHAR_IDLE_STAND;
+    let isMoving = false;
+    let gameWon = false;
+    let keysHeld = new Set();
+    let lastMoveTs = 0;
+    let lastInputTs = 0;
+    let rafId = null;
+
+    // ──────────────────────────────────────────────────────────────
+    //  DOM refs
+    // ──────────────────────────────────────────────────────────────
+
+    const loadingScreen = document.getElementById('loading-screen');
+    const loadingFill = document.getElementById('loading-bar-fill');
+    const canvasWrapper = document.getElementById('canvas-wrapper');
+    const canvas = document.getElementById('maze-canvas');
+    const ctx = canvas.getContext('2d');
+    const winOverlay = document.getElementById('win-overlay');
+    const playAgainBtn = document.getElementById('play-again-btn');
+
+    // ──────────────────────────────────────────────────────────────
+    //  Game loop
+    // ──────────────────────────────────────────────────────────────
+
+    function gameLoop(ts) {
+      if (!lastInputTs) {
+        lastInputTs = ts;
+      }
+
+      if (!gameWon) {
+        // Priority order for simultaneous keys
+        const priority = [
+          'ArrowUp', 'w', 'W',
+          'ArrowDown', 's', 'S',
+          'ArrowLeft', 'a', 'A',
+          'ArrowRight', 'd', 'D',
+        ];
+
+        let activeKey = null;
+        for (const key of priority) {
+          if (keysHeld.has(key)) {
+            activeKey = key;
+            break;
+          }
+        }
+
+        if (activeKey) {
+          lastInputTs = ts;
+
+          if (ts - lastMoveTs >= MOVE_MS) {
+            const [dx, dy] = KEY_TO_DELTA[activeKey];
+
+            // Change character before moving: 🚶‍➡️ for right/down, 🚶 for left/up
+            if (dx > 0 || dy > 0) {
+              playerChar = CHAR_WALK_RIGHT;
+            } else if (dx < 0 || dy < 0) {
+              playerChar = CHAR_WALK_LEFT;
+            }
+
+            const nx = playerX + dx, ny = playerY + dy;
+            const grid = maze.mazeArrayRepresentation;
+            if (nx >= 0 && ny >= 0 && nx < maze.width && ny < maze.height && grid[ny][nx]) {
+              playerX = nx;
+              playerY = ny;
+            }
+
+            lastMoveTs = ts;
+            isMoving = true;
+          }
+        } else {
+          // No input registered currently
+          if (isMoving && ts - lastMoveTs >= MOVE_MS) {
+            // When no input is registered during the next cycle, change to 🧍
+            playerChar = CHAR_IDLE_STAND;
+            isMoving = false;
+          } else if (!isMoving && ts - lastInputTs >= 2000) {
+            // If no input is registered after 2 seconds, change to 🛌 until the user makes a move
+            playerChar = CHAR_IDLE_SLEEP;
+          }
+        }
+      }
+
+      drawViewport(ctx, canvas.width, canvas.height, maze, playerX, playerY);
+
+      if (!gameWon && playerX === maze.goalPoint.x && playerY === maze.goalPoint.y) {
+        gameWon = true;
+        keysHeld.clear();
+        winOverlay.classList.add('visible');
+      }
+
+      rafId = requestAnimationFrame(gameLoop);
+    }
+
+    /**
+     * Dynamically update canvas dimensions to fit the maze while keeping it within screen bounds.
+     */
+    function updateCanvasSize() {
+      if (!maze) return;
+      const titleSpace = 50;
+      const hintSpace = 35;
+      const margin = 20;
+      const maxW = Math.max(60, window.innerWidth - margin * 2);
+      const maxH = Math.max(60, window.innerHeight - (titleSpace + hintSpace) * 2);
+
+      const totalW = maze.width * CELL_PX;
+      const totalH = maze.height * CELL_PX;
+
+      if (maze.width === maze.height) {
+        const maxSide = Math.min(maxW, maxH);
+        canvas.width = Math.min(totalW, maxSide);
+        canvas.height = Math.min(totalH, maxSide);
+      } else {
+        canvas.width = Math.min(totalW, maxW);
+        canvas.height = Math.min(totalH, maxH);
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      updateCanvasSize();
+      if (maze && !gameWon) {
+        drawViewport(ctx, canvas.width, canvas.height, maze, playerX, playerY);
+      }
+    });
+
+    // ──────────────────────────────────────────────────────────────
+    //  Startup
+    // ──────────────────────────────────────────────────────────────
+
+    function startGame(m) {
+      maze = m;
+      playerX = m.startPoint.x;
+      playerY = m.startPoint.y;
+      playerChar = CHAR_IDLE_STAND;
+      isMoving = false;
+      lastMoveTs = 0;
+      lastInputTs = performance.now();
+
+      // Size the canvas to fit the maze while staying within viewport bounds
+      updateCanvasSize();
+
+      // Pre-render static maze texture
+      buildMazeTexture(m);
+
+      // Show game UI
+      loadingScreen.classList.add('hidden');
+      setTimeout(() => { loadingScreen.style.display = 'none'; }, 450);
+      canvasWrapper.style.display = 'block';
+
+      // Input listeners
+      window.addEventListener('keydown', (e) => {
+        if (gameWon) {
+          if (e.key === 'Enter') location.reload();
+          return;
+        }
+        if (KEY_TO_DELTA[e.key]) {
+          e.preventDefault();
+          keysHeld.add(e.key);
+          lastInputTs = performance.now();
+
+          // Before moving, the character changes to 🚶‍➡️ for right/down, or 🚶 for left/up
+          const [dx, dy] = KEY_TO_DELTA[e.key];
+          if (dx > 0 || dy > 0) {
+            playerChar = CHAR_WALK_RIGHT;
+          } else if (dx < 0 || dy < 0) {
+            playerChar = CHAR_WALK_LEFT;
+          }
+        }
+      });
+      window.addEventListener('keyup', (e) => keysHeld.delete(e.key));
+
+      // Play Again
+      playAgainBtn.addEventListener('click', () => location.reload());
+
+      // Start render loop
+      rafId = requestAnimationFrame(gameLoop);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Async generation (chunked to keep UI alive)
+    // ──────────────────────────────────────────────────────────────
+
+    function generateMazeAsync(MazeClass = LargeMaze) {
+      return new Promise((resolve) => {
+        let attempt = 0;
+
+        function attempt_() {
+          attempt++;
+          const m = new MazeClass();
+
+          MazeGenerator.generate(m, (pct) => {
+            loadingFill.style.width = `${Math.round(pct * 100)}%`;
+          });
+
+          // Validate with MazeSolver
+          const solvable = MazeSolver.solve(m);
+          if (solvable) {
+            resolve(m);
+          } else {
+            console.warn(`Maze attempt ${attempt} not solvable — retrying…`);
+            loadingFill.style.width = '0%';
+            // Yield to browser between attempts
+            setTimeout(attempt_, 16);
+          }
+        }
+
+        // Small delay so the loading UI renders first
+        setTimeout(attempt_, 60);
+      });
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  Start Screen & Menu Handling
+    // ──────────────────────────────────────────────────────────────
+
+    const startScreen = document.getElementById('start-screen');
+    const titleCard = document.getElementById('title-card');
+    const startMenu = document.getElementById('start-menu');
+    const menuButtons = Array.from(document.querySelectorAll('.menu-btn'));
+
+    const MENU_OPTIONS = [
+      { label: 'Tiny', mazeClass: TinyMaze },
+      { label: 'Small', mazeClass: SmallMaze },
+      { label: 'Medium', mazeClass: MediumMaze },
+      { label: 'Large', mazeClass: LargeMaze },
+      { label: 'Giant', mazeClass: GiantMaze },
+    ];
+
+    let selectedIndex = 0;
+    let menuSelectionConfirmed = false;
+
+    function updateMenuHighlight() {
+      menuButtons.forEach((btn, idx) => {
+        if (idx === selectedIndex) {
+          btn.classList.add('highlighted');
+          btn.setAttribute('aria-selected', 'true');
+        } else {
+          btn.classList.remove('highlighted');
+          btn.setAttribute('aria-selected', 'false');
+        }
+      });
+    }
+
+    function onMenuKeyDown(e) {
+      if (menuSelectionConfirmed) return;
+
+      const key = e.key;
+
+      if (key === 'ArrowDown' || key === 's' || key === 'S') {
+        e.preventDefault();
+        selectedIndex = (selectedIndex + 1) % MENU_OPTIONS.length;
+        updateMenuHighlight();
+      } else if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+        e.preventDefault();
+        selectedIndex = (selectedIndex - 1 + MENU_OPTIONS.length) % MENU_OPTIONS.length;
+        updateMenuHighlight();
+      } else if (key === 'Enter') {
+        e.preventDefault();
+        selectOption(selectedIndex);
+      }
+    }
+
+    menuButtons.forEach((btn, idx) => {
+      btn.addEventListener('mouseenter', () => {
+        if (menuSelectionConfirmed) return;
+        selectedIndex = idx;
+        updateMenuHighlight();
+      });
+
+      btn.addEventListener('focus', () => {
+        if (menuSelectionConfirmed) return;
+        selectedIndex = idx;
+        updateMenuHighlight();
+      });
+
+      btn.addEventListener('click', (e) => {
+        if (menuSelectionConfirmed) return;
+        if (e.button === 0) {
+          selectedIndex = idx;
+          selectOption(idx);
+        }
+      });
+    });
+
+    window.addEventListener('keydown', onMenuKeyDown);
+
+    function selectOption(idx) {
+      if (menuSelectionConfirmed) return;
+      menuSelectionConfirmed = true;
+
+      // Unbind inputs from the menu
+      window.removeEventListener('keydown', onMenuKeyDown);
+
+      const chosen = MENU_OPTIONS[idx];
+
+      // Remove the title card and the menu
+      if (titleCard) titleCard.remove();
+      if (startMenu) startMenu.remove();
+      if (startScreen) startScreen.remove();
+
+      // Show app title for gameplay
+      const appTitle = document.getElementById('app-title');
+      if (appTitle) appTitle.style.display = 'block';
+
+      // Show loading screen and generate selected maze
+      loadingScreen.style.display = 'flex';
+      loadingScreen.classList.remove('hidden');
+      loadingFill.style.width = '0%';
+
+      (async () => {
+        const m = await generateMazeAsync(chosen.mazeClass);
+        startGame(m);
+      })();
+    }
+  </script>
+</body>
+
+</html>

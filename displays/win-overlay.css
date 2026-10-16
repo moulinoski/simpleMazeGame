@@ -1,0 +1,91 @@
+/* ── Win overlay ────────────────────────────── */
+#win-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 4, 14, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 200;
+}
+
+#win-overlay.visible {
+  display: flex;
+}
+
+#win-card {
+  background: #0c0c20;
+  border: 1.5px solid rgba(255, 60, 60, 0.45);
+  border-radius: 20px;
+  padding: 52px 72px 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 36px;
+  box-shadow:
+    0 0 80px rgba(255, 50, 50, 0.12),
+    0 0 0 1px rgba(255, 80, 80, 0.06),
+    0 20px 80px rgba(0, 0, 0, 0.8);
+  animation: card-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+#win-text {
+  color: #ff3333;
+  font-size: clamp(2.4rem, 6vw, 3.4rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-shadow:
+    0 0 24px rgba(255, 50, 50, 0.7),
+    0 0 60px rgba(255, 50, 50, 0.35);
+  animation: pulse-red 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse-red {
+
+  0%,
+  100% {
+    text-shadow: 0 0 18px rgba(255, 50, 50, 0.55), 0 0 50px rgba(255, 50, 50, 0.25);
+  }
+
+  50% {
+    text-shadow: 0 0 36px rgba(255, 50, 50, 0.9), 0 0 80px rgba(255, 50, 50, 0.5);
+  }
+}
+
+#play-again-btn {
+  background: #082e10;
+  color: #ffffff;
+  border: 1.5px solid #186a28;
+  border-radius: 12px;
+  padding: 15px 48px;
+  font-size: 1rem;
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  transition: background 0.16s, border-color 0.16s, box-shadow 0.16s, transform 0.12s;
+  box-shadow: 0 0 20px rgba(20, 100, 40, 0.3);
+}
+
+#play-again-btn:hover {
+  background: #0d4a1a;
+  border-color: #22c040;
+  box-shadow: 0 0 40px rgba(30, 160, 60, 0.5);
+  transform: translateY(-2px) scale(1.03);
+}
+
+#play-again-btn:active {
+  transform: translateY(0) scale(0.98);
+}
