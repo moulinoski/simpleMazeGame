@@ -10,8 +10,10 @@ class MediumMaze extends Maze {
     this.height = 50;
     this.startPoint = { x: 0, y: 0 };
     this.goalPoint = { x: 0, y: 0 };
-    this.impassable = new BasicImpassable();
+    this.impassable = new TreeImpassable();
     this.passable = new BasicPassable();
     this.mazeArrayRepresentation = [];
+    this.goalEmoji = "🏡";
+    this.backgroundColor = "#074405ff";
   }
 }

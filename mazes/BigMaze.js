@@ -13,5 +13,7 @@ class BigMaze extends Maze {
     this.impassable = new BasicImpassable();
     this.passable = new BasicPassable();
     this.mazeArrayRepresentation = [];
+    this.goalEmoji = "🏆";
+    this.backgroundColor = "#818f7eff";
   }
 }

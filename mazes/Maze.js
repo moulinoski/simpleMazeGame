@@ -15,5 +15,9 @@ class Maze {
     /** @type {Passable}            */ this.passable = null;
     // true = passable floor, false = impassable wall
     /** @type {boolean[][]}         */ this.mazeArrayRepresentation = [];
+    /** @type {string}              */ this.goalEmoji = "✨";
+    /** @type {string}              */ this.backgroundColor = "#0e0e12";
+    /** @type {string}              */ this.wallColor = "#1e1e2e";
+    /** @type {string}              */ this.goalColor = "#fce300";
   }
 }
